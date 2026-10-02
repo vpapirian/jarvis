@@ -1,0 +1,7 @@
+anthropic>=0.40.0
+python-dotenv>=1.0.1
+SpeechRecognition>=3.10.4
+PyAudio>=0.2.14
+faster-whisper>=1.0.3
+pyttsx3>=2.90
+spotipy>=2.24.0
