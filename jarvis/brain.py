@@ -18,6 +18,37 @@ from .tools import browser, files, spotify, system
 
 log = logging.getLogger("jarvis.brain")
 
+# Upper bound on how many messages of history are sent to Claude each turn.
+MAX_HISTORY_MESSAGES = 40
+
+
+def _is_user_turn_start(message: dict) -> bool:
+    """True for a plain spoken user message (not a tool_result carrier)."""
+    return message["role"] == "user" and isinstance(message["content"], str)
+
+
+def trim_history(history: list, limit: int = MAX_HISTORY_MESSAGES) -> list:
+    """
+    Shortens `history` to roughly `limit` messages without breaking it.
+
+    The API rejects a conversation that starts with an assistant message or
+    contains a tool_result whose tool_use was dropped, so a plain slice such
+    as history[-limit:] can turn one long conversation into a permanent 400
+    error. Instead we only cut at the start of a user turn, which keeps every
+    tool_use together with its tool_result.
+    """
+    if len(history) <= limit:
+        return history
+    for i in range(len(history) - limit, len(history)):
+        if _is_user_turn_start(history[i]):
+            return history[i:]
+    # A single turn with a very long tool loop: keep all of it rather than
+    # cut it in half.
+    for i in range(len(history) - 1, -1, -1):
+        if _is_user_turn_start(history[i]):
+            return history[i:]
+    return history
+
 SYSTEM_PROMPT = f"""You are {config.assistant_name}, a spoken voice assistant running \
 locally on the user's Windows PC, in the style of Iron Man's J.A.R.V.I.S. \
 You hear the user through speech-to-text and your replies are read aloud \
@@ -198,9 +229,21 @@ class Brain:
 
     def respond(self, user_text: str) -> str:
         """Sends user_text to Claude, runs any tool calls, returns the final spoken reply."""
+        # If anything fails part-way through (API outage, network drop), put
+        # the history back as it was. Otherwise it could end with a tool_use
+        # that never got a tool_result, and every later request would be
+        # rejected by the API.
+        snapshot = list(self.history)
+        try:
+            return self._respond(user_text)
+        except Exception:
+            self.history = snapshot
+            raise
+
+    def _respond(self, user_text: str) -> str:
         self.history.append({"role": "user", "content": user_text})
         # Keep the transcript from growing unbounded.
-        self.history = self.history[-40:]
+        self.history = trim_history(self.history)
 
         while True:
             response = self.client.messages.create(
