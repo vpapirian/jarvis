@@ -111,6 +111,15 @@ All settings live in `.env`. See `.env.example` for the full list.
 
 Claude starts using the new tool automatically whenever it's relevant.
 
+## 🧪 Tests
+
+The unit tests need no microphone, network or API key:
+
+```bash
+pip install anthropic python-dotenv pytest
+python -m pytest
+```
+
 ## 🩺 Troubleshooting
 
 - **"No default input device":** set a default microphone in Windows Sound settings, or set `INPUT_DEVICE_INDEX` in `.env`.
